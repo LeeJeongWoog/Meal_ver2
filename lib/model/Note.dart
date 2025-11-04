@@ -15,11 +15,11 @@ class Note {
     required this.date,
     required this.title,
     required this.content,
-    required this.selectedVerses,
+    required List<VerseReference> selectedVerses,
     required this.createdAt,
     required this.updatedAt,
     this.color,
-  });
+  }) : selectedVerses = List.unmodifiable(selectedVerses);
 
   // Create a new note with auto-generated ID
   factory Note.create({
@@ -35,7 +35,7 @@ class Note {
       date: date,
       title: title,
       content: content,
-      selectedVerses: selectedVerses,
+      selectedVerses: List<VerseReference>.from(selectedVerses),
       createdAt: now,
       updatedAt: now,
       color: color,
@@ -54,7 +54,9 @@ class Note {
       date: date,
       title: title ?? this.title,
       content: content ?? this.content,
-      selectedVerses: selectedVerses ?? this.selectedVerses,
+      selectedVerses: selectedVerses != null
+          ? List<VerseReference>.from(selectedVerses)
+          : this.selectedVerses,
       createdAt: createdAt,
       updatedAt: DateTime.now(),
       color: color ?? this.color,

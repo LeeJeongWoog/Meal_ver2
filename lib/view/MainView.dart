@@ -3,11 +3,12 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:meal_ver2/model/Verse.dart';
 import 'package:meal_ver2/model/Note.dart';
+import 'package:meal_ver2/model/Highlight.dart';
 import 'package:meal_ver2/viewmodel/MainViewModel.dart';
 import 'package:provider/provider.dart';
 import 'package:meal_ver2/view/SelectBibleView.dart';
 import 'package:meal_ver2/view/NoteEditorView.dart';
-import 'package:meal_ver2/view/NotesListView.dart';
+import 'package:meal_ver2/view/NotesCalendarView.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../util/CustomTheme.dart';
@@ -120,23 +121,96 @@ class _Meal2ViewState extends State<Meal2View> {
   
   void _createNoteFromSelection() async {
     if (selectedVerses.isEmpty) return;
-    
+
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => NoteEditorView(
-          selectedVerses: selectedVerses,
+          selectedVerses: List<VerseReference>.from(selectedVerses),
           date: viewModel.SelectedDate ?? DateTime.now(),
         ),
       ),
     );
-    
+
     if (result == true) {
       // Note was created successfully
       _exitSelectionMode();
       // Refresh to show note indicators
       setState(() {});
     }
+  }
+
+  // Copy verses with reference format
+  Future<void> _copyWithFormat(String format) async {
+    final selectedVerseObjects = viewModel.DataSource[0]
+        .where((verse) {
+          final bibleType = viewModel.SelectedBibles.isNotEmpty
+              ? viewModel.SelectedBibles[0]
+              : '';
+          final verseRef = VerseReference.fromVerse(verse, bibleType);
+          return selectedVerseIds.contains(verseRef.verseId);
+        })
+        .toList();
+
+    await viewModel.copyVersesWithReference(selectedVerseObjects);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('클립보드에 복사되었습니다')),
+    );
+    _exitSelectionMode();
+  }
+
+  // Apply highlight to selected verses
+  void _applyHighlight(Color color) {
+    for (final verseRef in selectedVerses) {
+      // Check if verse already has a highlight
+      final existingHighlight = viewModel.getHighlightForVerse(
+        verseRef.book,
+        verseRef.chapter,
+        verseRef.verse,
+      );
+
+      if (existingHighlight != null) {
+        // Remove highlight if it already exists
+        viewModel.removeHighlight(verseRef.book, verseRef.chapter, verseRef.verse);
+      } else {
+        // Add new highlight
+        viewModel.addHighlight(verseRef.book, verseRef.chapter, verseRef.verse, color);
+      }
+    }
+
+    _exitSelectionMode();
+  }
+
+  // Build action button widget
+  Widget _buildActionButton(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required VoidCallback onPressed,
+  }) {
+    return Expanded(
+      child: InkWell(
+        onTap: onPressed,
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: 12.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: Theme.of(context).primaryColor),
+              SizedBox(height: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).primaryColor,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -243,7 +317,9 @@ class _Meal2ViewState extends State<Meal2View> {
                                             final verseRef = VerseReference.fromVerse(verse, bibleType);
                                             final isSelected = selectedVerseIds.contains(verseRef.verseId);
                                             final hasNote = viewModel.hasNoteForVerse(viewModel.SelectedDate ?? DateTime.now(), verseRef);
-                                            
+                                            final highlight = viewModel.getHighlightForVerse(verse.book, verse.chapter, verse.verse);
+                                            final hasHighlight = highlight != null;
+
                                             return GestureDetector(
                                               onLongPress: () {
                                                 if (!isSelectionMode) {
@@ -257,28 +333,25 @@ class _Meal2ViewState extends State<Meal2View> {
                                                 }
                                               },
                                               child: Container(
-                                                color: isSelected ? Theme.of(context).primaryColor.withOpacity(0.1) : Colors.transparent,
+                                                decoration: BoxDecoration(
+                                                  color: isSelected
+                                                      ? Theme.of(context).primaryColor.withOpacity(0.1)
+                                                      : Colors.transparent,
+                                                ),
                                                 child: Row(
                                                   crossAxisAlignment: CrossAxisAlignment.start,
                                                   children: [
-                                                    if (isSelectionMode)
-                                                      Checkbox(
-                                                        value: isSelected,
-                                                        onChanged: (bool? value) {
-                                                          _toggleVerseSelection(verse, bibleType);
-                                                        },
-                                                      ),
                                                     Opacity(opacity: isFirstBible? 1.0: 0.1,
                                                     child: Container(
-                                                      alignment: Alignment.centerRight,
                                                       width: MediaQuery.of(context).size.width * 0.05,
-                                                      height: MediaQuery.of(context).size.width * 0.07,
+                                                      padding: EdgeInsets.only(top: 2),
                                                       child: Text('${verse.verse}. ',
                                                         style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color,
                                                           fontFamily: 'Biblefont',
                                                           fontWeight: FontWeight.bold,
-                                                          fontSize: MediaQuery.of(context).size.width * 0.035,),
-                                                          textAlign: TextAlign.center,
+                                                          fontSize: viewModel.fontSize * 0.8,
+                                                          height: viewModel.lineSpacing,),
+                                                          textAlign: TextAlign.right,
                                                       ),
                                                     ),
                                                   ),
@@ -288,25 +361,46 @@ class _Meal2ViewState extends State<Meal2View> {
                                                       child: Row(
                                                         children: [
                                                           Expanded(
-                                                            child: SelectableText(
-                                                              viewModel.DataSource.length > 1 // 성경이 여러 개인 경우 확인
-                                                                  ? '${verse.bibleType} ${verse.btext}' // 여러 개일 경우 bibletype 포함
-                                                                  : '${verse.btext}', // 하나일 경우 bibletype 없이 btext만 표시
-                                                              style: TextStyle(color: isFirstBible? Theme.of(context).textTheme.bodyLarge?.color: isSecondBible? Colors.blueGrey : isThirdBible? Colors.brown : Colors.deepPurple,
-                                                                fontWeight: FontWeight.normal,
-                                                                fontFamily: 'Biblefont',
-                                                                fontSize: viewModel.fontSize,
-                                                                height: viewModel.lineSpacing,
-                                                              ),
+                                                            child: Container(
+                                                              decoration: hasHighlight ? BoxDecoration(
+                                                                color: highlight.color.withOpacity(0.3),
+                                                                borderRadius: BorderRadius.circular(4),
+                                                              ) : null,
+                                                              child: isSelectionMode
+                                                                  ? Text(
+                                                                      viewModel.DataSource.length > 1 // 성경이 여러 개인 경우 확인
+                                                                          ? '${verse.bibleType} ${verse.btext}' // 여러 개일 경우 bibletype 포함
+                                                                          : '${verse.btext}', // 하나일 경우 bibletype 없이 btext만 표시
+                                                                      style: TextStyle(color: isFirstBible? Theme.of(context).textTheme.bodyLarge?.color: isSecondBible? Colors.blueGrey : isThirdBible? Colors.brown : Colors.deepPurple,
+                                                                        fontWeight: FontWeight.normal,
+                                                                        fontFamily: 'Biblefont',
+                                                                        fontSize: viewModel.fontSize,
+                                                                        height: viewModel.lineSpacing,
+                                                                      ),
+                                                                    )
+                                                                  : SelectableText(
+                                                                      viewModel.DataSource.length > 1 // 성경이 여러 개인 경우 확인
+                                                                          ? '${verse.bibleType} ${verse.btext}' // 여러 개일 경우 bibletype 포함
+                                                                          : '${verse.btext}', // 하나일 경우 bibletype 없이 btext만 표시
+                                                                      style: TextStyle(color: isFirstBible? Theme.of(context).textTheme.bodyLarge?.color: isSecondBible? Colors.blueGrey : isThirdBible? Colors.brown : Colors.deepPurple,
+                                                                        fontWeight: FontWeight.normal,
+                                                                        fontFamily: 'Biblefont',
+                                                                        fontSize: viewModel.fontSize,
+                                                                        height: viewModel.lineSpacing,
+                                                                      ),
+                                                                    ),
                                                             ),
                                                           ),
                                                           if (hasNote && !isSelectionMode)
                                                             Padding(
                                                               padding: EdgeInsets.only(left: 4),
-                                                              child: Icon(
-                                                                Icons.note,
-                                                                size: 16,
-                                                                color: Theme.of(context).primaryColor,
+                                                              child: Tooltip(
+                                                                message: '노트',
+                                                                child: Icon(
+                                                                  Icons.description,
+                                                                  size: 16,
+                                                                  color: Theme.of(context).primaryColor,
+                                                                ),
                                                               ),
                                                             ),
                                                         ],
@@ -335,15 +429,46 @@ class _Meal2ViewState extends State<Meal2View> {
                   },
                 ),
               ),
-              floatingActionButton: isSelectionMode && selectedVerseIds.isNotEmpty
-                  ? FloatingActionButton.extended(
-                      onPressed: _createNoteFromSelection,
-                      label: Text('노트 만들기'),
-                      icon: Icon(Icons.note_add),
-                      backgroundColor: Theme.of(context).primaryColor,
+              bottomNavigationBar: isSelectionMode && selectedVerseIds.isNotEmpty
+                  ? Container(
+                      padding: EdgeInsets.all(8.0),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.surface,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black12,
+                            blurRadius: 4,
+                            offset: Offset(0, -2),
+                          ),
+                        ],
+                      ),
+                      child: SafeArea(
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            _buildActionButton(
+                              context,
+                              icon: Icons.copy,
+                              label: '복사',
+                              onPressed: () => _copyWithFormat('reference'),
+                            ),
+                            _buildActionButton(
+                              context,
+                              icon: Icons.highlight,
+                              label: '형광펜',
+                              onPressed: () => _applyHighlight(HighlightColor.yellow),
+                            ),
+                            _buildActionButton(
+                              context,
+                              icon: Icons.note_add,
+                              label: '노트',
+                              onPressed: _createNoteFromSelection,
+                            ),
+                          ],
+                        ),
+                      ),
                     )
                   : null,
-              floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
             ),
           );
         },
@@ -465,13 +590,11 @@ class Header extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 IconButton(
-                  icon: Icon(Icons.notes),
+                  icon: Icon(Icons.import_contacts),
                   onPressed: () {
                     Navigator.of(context).push(
                       MaterialPageRoute(
-                        builder: (context) => NotesListView(
-                          date: viewModel.SelectedDate ?? DateTime.now(),
-                        ),
+                        builder: (context) => NotesCalendarView(),
                       ),
                     );
                   },

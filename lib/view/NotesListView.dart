@@ -39,7 +39,7 @@ class _NotesListViewState extends State<NotesListView> {
       context,
       MaterialPageRoute(
         builder: (context) => NoteEditorView(
-          selectedVerses: note.selectedVerses,
+          selectedVerses: List<VerseReference>.from(note.selectedVerses),
           date: note.date,
           existingNote: note,
         ),
@@ -142,7 +142,7 @@ class _NotesListViewState extends State<NotesListView> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(
-                          Icons.note_outlined,
+                          Icons.import_contacts,
                           size: 64,
                           color: Colors.grey,
                         ),

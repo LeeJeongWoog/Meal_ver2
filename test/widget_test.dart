@@ -1,30 +1,69 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import 'package:meal_ver2/main.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'package:intl/intl.dart';
+import 'package:meal_ver2/model/Verse.dart';
+import 'package:meal_ver2/network/plan.dart';
+import 'package:meal_ver2/view/MainView.dart';
+import 'package:meal_ver2/viewmodel/MainViewModel.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(MyApp());
+  TestWidgetsFlutterBinding.ensureInitialized();
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+  testWidgets('Meal2View renders provided verse data', (tester) async {
+    tester.binding.window.physicalSizeTestValue = const Size(1080, 1920);
+    tester.binding.window.devicePixelRatioTestValue = 1.0;
+    addTearDown(() {
+      tester.binding.window.clearPhysicalSizeTestValue();
+      tester.binding.window.clearDevicePixelRatioTestValue();
+    });
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    await initializeDateFormatting('ko_KR');
+    Intl.defaultLocale = 'ko_KR';
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final viewModel = MainViewModel(prefs, initialize: false);
+
+    final verse = Verse(
+      bibleType: '[개역개정]',
+      book: '창세기',
+      btext: '태초에 하나님이 천지를 창조하시니라',
+      fullName: '창세기',
+      chapter: 1,
+      id: 1,
+      verse: 1,
+    );
+
+    viewModel.configureForTest(
+      dataSource: [
+        [verse]
+      ],
+      selectedBibles: ['개역개정'],
+      todayPlan: Plan(
+        book: '창세기',
+        fullName: '창세기',
+        fChap: 1,
+        fVer: 1,
+        lChap: 1,
+        lVer: 1,
+      ),
+      selectedDate: DateTime(2024, 1, 1),
+    );
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<MainViewModel>.value(
+        value: viewModel,
+        child: Meal2View(),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('태초에'), findsOneWidget);
   });
 }

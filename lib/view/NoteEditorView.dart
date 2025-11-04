@@ -21,7 +21,6 @@ class NoteEditorView extends StatefulWidget {
 }
 
 class _NoteEditorViewState extends State<NoteEditorView> {
-  late TextEditingController _titleController;
   late TextEditingController _contentController;
   String? _selectedColor;
   final List<String> _colorOptions = [
@@ -36,32 +35,26 @@ class _NoteEditorViewState extends State<NoteEditorView> {
   @override
   void initState() {
     super.initState();
-    _titleController = TextEditingController(text: widget.existingNote?.title ?? '');
     _contentController = TextEditingController(text: widget.existingNote?.content ?? '');
     _selectedColor = widget.existingNote?.color;
   }
 
   @override
   void dispose() {
-    _titleController.dispose();
     _contentController.dispose();
     super.dispose();
   }
 
   void _saveNote() {
-    if (_titleController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('제목을 입력해주세요')),
-      );
-      return;
-    }
-
     final viewModel = Provider.of<MainViewModel>(context, listen: false);
-    
+
+    // Auto-generate title from verse references
+    final autoTitle = widget.selectedVerses.map((v) => v.reference).join(', ');
+
     if (widget.existingNote != null) {
       // Update existing note
       final updatedNote = widget.existingNote!.copyWith(
-        title: _titleController.text,
+        title: autoTitle,
         content: _contentController.text,
         selectedVerses: widget.selectedVerses,
         color: _selectedColor,
@@ -71,7 +64,7 @@ class _NoteEditorViewState extends State<NoteEditorView> {
       // Create new note
       final newNote = Note.create(
         date: widget.date,
-        title: _titleController.text,
+        title: autoTitle,
         content: _contentController.text,
         selectedVerses: widget.selectedVerses,
         color: _selectedColor,
@@ -147,122 +140,53 @@ class _NoteEditorViewState extends State<NoteEditorView> {
                 border: Border.all(color: Colors.grey.withOpacity(0.3)),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: ListView.separated(
-                shrinkWrap: true,
-                padding: EdgeInsets.all(12),
-                itemCount: widget.selectedVerses.length,
-                separatorBuilder: (context, index) => Divider(),
-                itemBuilder: (context, index) {
-                  final verse = widget.selectedVerses[index];
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        verse.fullReference,
+              child: widget.selectedVerses.isEmpty
+                  ? Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Text(
+                        '선택된 구절이 없습니다',
                         style: TextStyle(
                           fontFamily: 'Mealfont',
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: Theme.of(context).primaryColor,
-                        ),
-                      ),
-                      SizedBox(height: 4),
-                      Text(
-                        verse.text,
-                        style: TextStyle(
-                          fontFamily: 'Biblefont',
                           fontSize: 14,
+                          color: Colors.grey,
                         ),
+                        textAlign: TextAlign.center,
                       ),
-                    ],
-                  );
-                },
-              ),
+                    )
+                  : ListView.separated(
+                      shrinkWrap: true,
+                      padding: EdgeInsets.all(12),
+                      itemCount: widget.selectedVerses.length,
+                      separatorBuilder: (context, index) => Divider(),
+                      itemBuilder: (context, index) {
+                        final verse = widget.selectedVerses[index];
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              verse.fullReference,
+                              style: TextStyle(
+                                fontFamily: 'Mealfont',
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context).primaryColor,
+                              ),
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              verse.text,
+                              style: TextStyle(
+                                fontFamily: 'Biblefont',
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
             ),
             SizedBox(height: 24),
-            
-            // Color selection
-            Text(
-              '색상 선택',
-              style: TextStyle(
-                fontFamily: 'Settingfont',
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              children: [
-                ..._colorOptions.map((color) => GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _selectedColor = _selectedColor == color ? null : color;
-                    });
-                  },
-                  child: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: Color(int.parse(color.replaceAll('#', '0xFF'))),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: _selectedColor == color 
-                            ? Theme.of(context).primaryColor 
-                            : Colors.grey.withOpacity(0.3),
-                        width: _selectedColor == color ? 3 : 1,
-                      ),
-                    ),
-                  ),
-                )),
-                // No color option
-                GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _selectedColor = null;
-                    });
-                  },
-                  child: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: _selectedColor == null 
-                            ? Theme.of(context).primaryColor 
-                            : Colors.grey.withOpacity(0.3),
-                        width: _selectedColor == null ? 3 : 1,
-                      ),
-                    ),
-                    child: Icon(
-                      Icons.clear,
-                      size: 20,
-                      color: Colors.grey,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: 24),
-            
-            // Title input
-            TextField(
-              controller: _titleController,
-              decoration: InputDecoration(
-                labelText: '제목',
-                labelStyle: TextStyle(fontFamily: 'Settingfont'),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              style: TextStyle(
-                fontFamily: 'Mealfont',
-                fontSize: 16,
-              ),
-            ),
-            SizedBox(height: 16),
-            
+
             // Content input
             TextField(
               controller: _contentController,

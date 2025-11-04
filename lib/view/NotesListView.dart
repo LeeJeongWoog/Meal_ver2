@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:meal_ver2/model/Note.dart';
 import 'package:meal_ver2/viewmodel/MainViewModel.dart';
 import 'package:meal_ver2/view/NoteEditorView.dart';
+import 'package:meal_ver2/util/verse_range_formatter.dart';
 
 class NotesListView extends StatefulWidget {
   final DateTime date;
@@ -82,6 +84,43 @@ class _NotesListViewState extends State<NotesListView> {
           ),
         ],
       ),
+    );
+  }
+
+  Future<void> _copyNote(Note note) async {
+    final buffer = StringBuffer();
+
+    if (note.selectedVerses.isNotEmpty) {
+      final grouped = <String, List<VerseReference>>{};
+      for (final verse in note.selectedVerses) {
+        final key = '${verse.bibleType}|${verse.book}|${verse.chapter}';
+        grouped.putIfAbsent(key, () => []).add(verse);
+      }
+
+      grouped.forEach((_, verses) {
+        verses.sort((a, b) => a.verse.compareTo(b.verse));
+        final first = verses.first;
+        final range = formatVerseRange(verses.map((v) => v.verse).toList());
+        final bibleLabel = first.bibleType.isNotEmpty ? '[${first.bibleType}] ' : '';
+        buffer.writeln('$bibleLabel${first.book} ${first.chapter}:$range');
+        buffer.writeln();
+        for (final verse in verses) {
+          buffer.writeln('${verse.verse}. ${verse.text}');
+        }
+        buffer.writeln();
+      });
+    }
+
+    if (note.content.trim().isNotEmpty) {
+      buffer.writeln(note.content.trim());
+    }
+
+    final copyText = buffer.toString().trim();
+    if (copyText.isEmpty) return;
+
+    await Clipboard.setData(ClipboardData(text: copyText));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('노트를 복사했어요.')),
     );
   }
 
@@ -172,7 +211,6 @@ class _NotesListViewState extends State<NotesListView> {
                     itemCount: notes.length,
                     itemBuilder: (context, index) {
                       final note = notes[index];
-                      final timeStr = DateFormat('HH:mm').format(note.createdAt);
                       final hasColor = note.color != null;
                       
                       return Card(
@@ -205,13 +243,10 @@ class _NotesListViewState extends State<NotesListView> {
                                     ),
                                     Row(
                                       children: [
-                                        Text(
-                                          timeStr,
-                                          style: TextStyle(
-                                            fontFamily: 'Mealfont',
-                                            fontSize: 12,
-                                            color: Colors.grey,
-                                          ),
+                                        IconButton(
+                                          icon: Icon(Icons.copy),
+                                          tooltip: '노트 복사',
+                                          onPressed: () => _copyNote(note),
                                         ),
                                         PopupMenuButton<String>(
                                           onSelected: (value) {

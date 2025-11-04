@@ -14,6 +14,7 @@ import '../model/Highlight.dart';
 import '../util/Globals.dart';
 import '../network/plan.dart';
 import '../model/Verse.dart';
+import '../util/verse_range_formatter.dart';
 
 class MainViewModel extends ChangeNotifier {
   static ValueNotifier<ThemeMode> _themeMode = ValueNotifier(ThemeMode.light);
@@ -838,7 +839,7 @@ Future<void> performInitialSetup(SharedPreferences prefs) async {
 
       // Add reference header
       final verseNumbers = verseList.map((v) => v.verse).toList();
-      final verseRange = _formatVerseRange(verseNumbers);
+      final verseRange = formatVerseRange(verseNumbers);
       buffer.writeln('$reference:$verseRange');
       buffer.writeln();
 
@@ -898,48 +899,11 @@ Future<void> performInitialSetup(SharedPreferences prefs) async {
 
       // Add reference at the end
       final verseNumbers = verseList.map((v) => v.verse).toList();
-      final verseRange = _formatVerseRange(verseNumbers);
+      final verseRange = formatVerseRange(verseNumbers);
       buffer.writeln('- $reference:$verseRange');
     });
 
     await Clipboard.setData(ClipboardData(text: buffer.toString().trim()));
   }
 
-  /// Helper method to format verse numbers into a range string
-  String _formatVerseRange(List<int> verseNumbers) {
-    if (verseNumbers.isEmpty) return '';
-    if (verseNumbers.length == 1) return verseNumbers[0].toString();
-
-    verseNumbers.sort();
-    final ranges = <String>[];
-    int start = verseNumbers[0];
-    int end = verseNumbers[0];
-
-    for (int i = 1; i < verseNumbers.length; i++) {
-      if (verseNumbers[i] == end + 1) {
-        end = verseNumbers[i];
-      } else {
-        if (start == end) {
-          ranges.add(start.toString());
-        } else if (end == start + 1) {
-          ranges.add('$start, $end');
-        } else {
-          ranges.add('$start-$end');
-        }
-        start = verseNumbers[i];
-        end = verseNumbers[i];
-      }
-    }
-
-    // Add the last range
-    if (start == end) {
-      ranges.add(start.toString());
-    } else if (end == start + 1) {
-      ranges.add('$start, $end');
-    } else {
-      ranges.add('$start-$end');
-    }
-
-    return ranges.join(', ');
-  }
 }

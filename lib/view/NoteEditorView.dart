@@ -78,12 +78,18 @@ class _NoteEditorViewState extends State<NoteEditorView> {
   @override
   Widget build(BuildContext context) {
     final dateStr = DateFormat('yyyy년 MM월 dd일', 'ko_KR').format(widget.date);
-    
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
+      backgroundColor: isDark ? Colors.black : null,
       appBar: AppBar(
+        backgroundColor: isDark ? Colors.grey[900] : null,
         title: Text(
           widget.existingNote != null ? '노트 수정' : '새 노트',
-          style: TextStyle(fontFamily: 'Settingfont'),
+          style: TextStyle(
+            fontFamily: 'Settingfont',
+            color: isDark ? Colors.white : null,
+          ),
         ),
         actions: [
           TextButton(
@@ -110,7 +116,9 @@ class _NoteEditorViewState extends State<NoteEditorView> {
             Container(
               padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: Theme.of(context).primaryColor.withOpacity(0.1),
+                color: isDark
+                    ? Colors.grey[800]
+                    : Theme.of(context).primaryColor.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
@@ -119,6 +127,7 @@ class _NoteEditorViewState extends State<NoteEditorView> {
                   fontFamily: 'Mealfont',
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : null,
                 ),
               ),
             ),
@@ -131,13 +140,18 @@ class _NoteEditorViewState extends State<NoteEditorView> {
                 fontFamily: 'Settingfont',
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
+                color: isDark ? Colors.white : null,
               ),
             ),
             SizedBox(height: 8),
             Container(
               constraints: BoxConstraints(maxHeight: 200),
               decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey.withOpacity(0.3)),
+                border: Border.all(
+                  color: isDark
+                      ? Colors.grey[700]!
+                      : Colors.grey.withOpacity(0.3),
+                ),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: widget.selectedVerses.isEmpty
@@ -148,7 +162,7 @@ class _NoteEditorViewState extends State<NoteEditorView> {
                         style: TextStyle(
                           fontFamily: 'Mealfont',
                           fontSize: 14,
-                          color: Colors.grey,
+                          color: isDark ? Colors.grey[400] : Colors.grey,
                         ),
                         textAlign: TextAlign.center,
                       ),
@@ -169,7 +183,9 @@ class _NoteEditorViewState extends State<NoteEditorView> {
                                 fontFamily: 'Mealfont',
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
-                                color: Theme.of(context).primaryColor,
+                                color: isDark
+                                    ? Colors.white
+                                    : Theme.of(context).primaryColor,
                               ),
                             ),
                             SizedBox(height: 4),
@@ -178,6 +194,7 @@ class _NoteEditorViewState extends State<NoteEditorView> {
                               style: TextStyle(
                                 fontFamily: 'Biblefont',
                                 fontSize: 14,
+                                color: isDark ? Colors.white : null,
                               ),
                             ),
                           ],
@@ -193,7 +210,10 @@ class _NoteEditorViewState extends State<NoteEditorView> {
               maxLines: 10,
               decoration: InputDecoration(
                 labelText: '내용',
-                labelStyle: TextStyle(fontFamily: 'Settingfont'),
+                labelStyle: TextStyle(
+                  fontFamily: 'Settingfont',
+                  color: isDark ? Colors.white70 : null,
+                ),
                 alignLabelWithHint: true,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
@@ -202,6 +222,7 @@ class _NoteEditorViewState extends State<NoteEditorView> {
               style: TextStyle(
                 fontFamily: 'Mealfont',
                 fontSize: 14,
+                color: isDark ? Colors.white : null,
               ),
             ),
           ],

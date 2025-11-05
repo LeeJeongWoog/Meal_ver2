@@ -333,11 +333,16 @@ class _Meal2ViewState extends State<Meal2View> {
                                                 }
                                               },
                                               child: Container(
-                                                decoration: BoxDecoration(
-                                                  color: isSelected
-                                                      ? Theme.of(context).primaryColor.withOpacity(0.1)
-                                                      : Colors.transparent,
-                                                ),
+                                                decoration: isSelected
+                                                    ? BoxDecoration(
+                                                        color: _selectionFill(context),
+                                                        borderRadius: BorderRadius.circular(8),
+                                                        border: Border.all(
+                                                          color: _selectionBorder(context),
+                                                          width: 1.1,
+                                                        ),
+                                                      )
+                                                    : null,
                                                 child: Row(
                                                   crossAxisAlignment: CrossAxisAlignment.start,
                                                   children: [
@@ -817,3 +822,20 @@ class ThemeAndBibleMenu extends StatelessWidget {
     );
   }
 }
+  Color _selectionFill(BuildContext context) {
+    final theme = Theme.of(context);
+    if (theme.brightness == Brightness.dark) {
+      return (Colors.grey[700] ?? theme.colorScheme.surfaceVariant)
+          .withOpacity(0.5);
+    }
+    return theme.primaryColor.withOpacity(0.12);
+  }
+
+  Color _selectionBorder(BuildContext context) {
+    final theme = Theme.of(context);
+    if (theme.brightness == Brightness.dark) {
+      return (Colors.grey[400] ?? theme.colorScheme.onSurface)
+          .withOpacity(0.6);
+    }
+    return theme.primaryColor.withOpacity(0.4);
+  }

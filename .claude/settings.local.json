@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(flutter devices:*)",
+      "Bash(flutter emulators:*)",
+      "Bash(flutter run)",
+      "Bash(timeout 60 cmd /c \"for /L %i in (1,1,30) do @(flutter devices | findstr emulator && exit /b 0 || timeout /t 2 /nobreak >nul)\")",
+      "Bash(flutter run:*)",
+      "Bash(timeout /t 10 /nobreak)",
+      "WebSearch"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

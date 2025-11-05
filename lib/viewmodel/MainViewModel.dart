@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:intl/intl.dart';
 import 'package:meal_ver2/network/FirebaseFunction.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -8,9 +9,12 @@ import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import '../model/PlanData.dart';
 import '../model/bible.dart';
-import '../util/Globals.Dart';
+import '../model/Note.dart';
+import '../model/Highlight.dart';
+import '../util/Globals.dart';
 import '../network/plan.dart';
 import '../model/Verse.dart';
+import '../util/verse_range_formatter.dart';
 
 class MainViewModel extends ChangeNotifier {
   static ValueNotifier<ThemeMode> _themeMode = ValueNotifier(ThemeMode.light);
@@ -35,7 +39,12 @@ class MainViewModel extends ChangeNotifier {
   Bible? _commonTransBible;
   Bible? _nasbBible;
   String bibleType = '';
+  
+  // Notes management
+  Map<String, List<Note>> _notesByDate = {}; // Key: "yyyy-MM-dd"
 
+  // Highlights management
+  Map<String, VerseHighlight> _highlightsByVerse = {}; // Key: "bibleType:book:chapter:verse"
 
   double get fontSize => _fontSize;
   double get verseSpacing => _verseSpacing;
@@ -44,14 +53,40 @@ class MainViewModel extends ChangeNotifier {
 
 
 
-  MainViewModel(SharedPreferences sharedPreferences) {
+  MainViewModel(SharedPreferences sharedPreferences, {bool initialize = true}) {
     _SharedPreferences = sharedPreferences;
-    //deleteMealPlan();
-    FireBaseFunction.signInAnonymously();
+    if (initialize) {
+      //deleteMealPlan();
+      FireBaseFunction.signInAnonymously();
+      _initialize();
+    }
+  }
 
-
-    _initialize();
-
+  void configureForTest({
+    List<List<Verse>>? dataSource,
+    List<String>? selectedBibles,
+    Plan? todayPlan,
+    DateTime? selectedDate,
+    Map<String, List<Note>>? notesByDate,
+  }) {
+    if (dataSource != null) {
+      DataSource = dataSource;
+    }
+    if (selectedBibles != null) {
+      SelectedBibles = selectedBibles;
+    }
+    if (todayPlan != null) {
+      TodayPlan = todayPlan;
+    }
+    if (selectedDate != null) {
+      SelectedDate = selectedDate;
+      lastViewedDate = selectedDate;
+    }
+    if (notesByDate != null) {
+      _notesByDate = notesByDate;
+    }
+    _IsLoading = false;
+    notifyListeners();
   }
 
 
@@ -60,6 +95,8 @@ class MainViewModel extends ChangeNotifier {
     await loadSliderSettings();
     await loadPreferences();
     await _loadSelectedBibles();
+    await loadNotes();
+    await loadHighlights();
     await selectLoad();
     notifyListeners();
   }
@@ -149,10 +186,15 @@ Future<void> performInitialSetup(SharedPreferences prefs) async {
   await prefs.setString('themeMode', 'light'); // 기본 테마 설정
   await prefs.setDouble('fontSize', 16.0); // 기본 글꼴 크기
   await prefs.setDouble('verseSpacing', 16.0); // 기본 줄 간격
-  await prefs.setString('newRevisedBible', jsonEncode(_newRevisedBible!.toJson()));
-  await prefs.setString('newStandardBible',  jsonEncode(_newStandardBible!.toJson()));
-  await prefs.setString('commonTransBible',  jsonEncode(_commonTransBible!.toJson()));
-  await prefs.setString('nasbBible',  jsonEncode(_nasbBible!.toJson()));
+
+  // Skip caching Bible data on web platform (storage quota too small)
+  // Web will load Bible data from assets each time instead
+  if (!kIsWeb) {
+    await prefs.setString('newRevisedBible', jsonEncode(_newRevisedBible!.toJson()));
+    await prefs.setString('newStandardBible',  jsonEncode(_newStandardBible!.toJson()));
+    await prefs.setString('commonTransBible',  jsonEncode(_commonTransBible!.toJson()));
+    await prefs.setString('nasbBible',  jsonEncode(_nasbBible!.toJson()));
+  }
 
   await prefs.setBool('isFirstRun', false);
   print('초기 설정 완료');
@@ -273,6 +315,11 @@ Future<void> performInitialSetup(SharedPreferences prefs) async {
           this.bibleType = await getBibleType(bibleFile);
 
           if (loadedBible != null) {
+            print('DEBUG: TodayPlan = ${this.TodayPlan?.toJson()}');
+            print('DEBUG: Looking for book="${this.TodayPlan?.book}", chapter=${this.TodayPlan?.fChap}-${this.TodayPlan?.lChap}, verse=${this.TodayPlan?.fVer}-${this.TodayPlan?.lVer}');
+            print('DEBUG: Total books in Bible: ${loadedBible.books.length}');
+            print('DEBUG: First book in Bible: ${loadedBible.books.isNotEmpty ? loadedBible.books[0].book : "empty"}');
+
             List<Verse> versesInPlanRange = loadedBible.books
                 .where((book) =>
             book.book == this.TodayPlan?.book &&
@@ -298,9 +345,8 @@ Future<void> performInitialSetup(SharedPreferences prefs) async {
               verse: book.verse,
             )).toList();
 
-
-            print('Added data for $bibleFile. Current newDataSource length: ${newDataSource.length}');
             newDataSource.add(versesInPlanRange);
+            print('Added ${versesInPlanRange.length} verses for $bibleFile. Total Bibles loaded: ${newDataSource.length}');
           } else {
             print('Error loading Bible file: $bibleFile');
           }
@@ -339,21 +385,58 @@ Future<void> performInitialSetup(SharedPreferences prefs) async {
 
   Future<Bible?> selectBible(String bibleFile) async
   {
+    // On web platform, load directly from assets (no caching due to storage quota)
+    if (kIsWeb) {
+      switch (bibleFile) {
+        case "개역개정":
+          return await _loadBibleFile('bib_json/개역개정.json');
+        case "새번역":
+          return await _loadBibleFile('bib_json/새번역.json');
+        case "공동번역":
+          return await _loadBibleFile('bib_json/공동번역.json');
+        case "NASB":
+          return await _loadBibleFile('bib_json/NASB.json');
+        default:
+          print('Unknown Bible file on web: $bibleFile');
+          return null;
+      }
+    }
+
+    // On mobile platforms, use cached data from SharedPreferences
     SharedPreferences prefs = await SharedPreferences.getInstance();
-    Bible newbible;
+
     switch (bibleFile) {
       case "개역개정":
         String? revisedJson = prefs.getString('newRevisedBible');
-        return Bible.fromJson(jsonDecode(revisedJson!));
+        if (revisedJson == null) {
+          print('Cache miss for 개역개정, loading from asset');
+          return await _loadBibleFile('bib_json/개역개정.json');
+        }
+        return Bible.fromJson(jsonDecode(revisedJson));
       case "새번역":
         String? standardJson  = prefs.getString('newStandardBible');
-        return Bible.fromJson(jsonDecode(standardJson!));
+        if (standardJson == null) {
+          print('Cache miss for 새번역, loading from asset');
+          return await _loadBibleFile('bib_json/새번역.json');
+        }
+        return Bible.fromJson(jsonDecode(standardJson));
       case "공동번역":
         String? commonTransJson   = prefs.getString('commonTransBible');
-        return Bible.fromJson(jsonDecode(commonTransJson!));
+        if (commonTransJson == null) {
+          print('Cache miss for 공동번역, loading from asset');
+          return await _loadBibleFile('bib_json/공동번역.json');
+        }
+        return Bible.fromJson(jsonDecode(commonTransJson));
       case "NASB":
         String? nasbJson   = prefs.getString('nasbBible');
-        return Bible.fromJson(jsonDecode(nasbJson!));
+        if (nasbJson == null) {
+          print('Cache miss for NASB, loading from asset');
+          return await _loadBibleFile('bib_json/NASB.json');
+        }
+        return Bible.fromJson(jsonDecode(nasbJson));
+      default:
+        print('Unknown Bible file: $bibleFile');
+        return null;
     }
   }
 
@@ -389,13 +472,12 @@ Future<void> performInitialSetup(SharedPreferences prefs) async {
   }
 
   Plan? getTodayPlan() {
-    var plan = Plan();
     if (this._Bible == null || this._Bible!.books.isEmpty) return null;
     Plan? checkedPlan = _existTodayPlan();
-    if (checkedPlan != null && this.TodayPlan != checkedPlan) {
-      return plan = checkedPlan;
-      //_updateTodayPlan();
+    if (checkedPlan != null) {
+      return checkedPlan;
     }
+    return null;  // Explicitly return null if no plan found
   }
 
   Plan? _existTodayPlan() {
@@ -412,11 +494,25 @@ Future<void> performInitialSetup(SharedPreferences prefs) async {
     //notifyListeners();
 
     try {
-      String downLoadURL = await FireBaseFunction.downloadFile();
-      final response = await http.get(Uri.parse(downLoadURL));
-      if (response.statusCode == 200) {
-        String decodedResponse = utf8.decode(response.bodyBytes);
-        List<dynamic> planListJson = jsonDecode(decodedResponse)['mealPlan'];
+      // Firebase Storage에서 파일 내용을 직접 가져옴 시도
+      String fileContent = await FireBaseFunction.downloadFileContent();
+      List<dynamic> planListJson = jsonDecode(fileContent)['mealPlan'];
+      List<Plan> newPlanList =
+          planListJson.map((plan) => Plan.fromJson(plan)).toList();
+
+      if (!listEquals(newPlanList, this.PlanList)) {
+        this.PlanList = newPlanList;
+        _saveMealPlan();
+        _getPlanData();
+      }
+    } catch (e) {
+      print("Error fetching meal plan from Firebase: $e");
+      print("Attempting to load from local fallback asset...");
+
+      try {
+        // Firebase 실패 시 로컬 fallback 파일 사용
+        String fallbackContent = await rootBundle.loadString('assets/db_fallback.json');
+        List<dynamic> planListJson = jsonDecode(fallbackContent)['mealPlan'];
         List<Plan> newPlanList =
             planListJson.map((plan) => Plan.fromJson(plan)).toList();
 
@@ -425,9 +521,10 @@ Future<void> performInitialSetup(SharedPreferences prefs) async {
           _saveMealPlan();
           _getPlanData();
         }
+        print("Successfully loaded meal plan from local fallback");
+      } catch (fallbackError) {
+        print("Error loading fallback meal plan: $fallbackError");
       }
-    } catch (e) {
-      print("Error fetching meal plan: $e");
     } finally {
       this._IsLoading = false;
       //notifyListeners();
@@ -436,8 +533,16 @@ Future<void> performInitialSetup(SharedPreferences prefs) async {
 
   Future<void> selectLoad() async {
     try {
-      // 설정된 성경이 없으면 기본값으로 "개역개정" 추가
+      // FIRST: Ensure meal plan is loaded
+      if (this.PlanList.isEmpty) {
+        print('DEBUG: PlanList is empty, waiting for meal plan to load...');
+        await _getMealPlan();
+      }
+
+      // THEN: Get today's plan
       this.TodayPlan = getTodayPlan();
+      print('DEBUG: TodayPlan set to: ${this.TodayPlan?.toJson()}');
+
       _updateTodayPlan();
       _addDataSource();
       // 설정된 성경 로드
@@ -538,4 +643,267 @@ Future<void> performInitialSetup(SharedPreferences prefs) async {
     return planList.indexWhere((plan) =>
         DateTime.parse(plan.day!).difference(selectedOrToday).inDays == 0);
   }
+  
+  // ==================== Notes Management Methods ====================
+  
+  // Load notes from SharedPreferences
+  Future<void> loadNotes() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final notesJson = prefs.getString('userNotes');
+      
+      if (notesJson != null) {
+        final Map<String, dynamic> decoded = json.decode(notesJson);
+        _notesByDate = decoded.map((key, value) {
+          final notesList = (value as List).map((noteJson) => Note.fromJson(noteJson)).toList();
+          return MapEntry(key, notesList);
+        });
+      }
+    } catch (e) {
+      print('Error loading notes: $e');
+      _notesByDate = {};
+    }
+    notifyListeners();
+  }
+  
+  // Save notes to SharedPreferences
+  Future<void> _saveNotes() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final notesMap = _notesByDate.map((key, value) {
+        return MapEntry(key, value.map((note) => note.toJson()).toList());
+      });
+      final notesJson = json.encode(notesMap);
+      await prefs.setString('userNotes', notesJson);
+    } catch (e) {
+      print('Error saving notes: $e');
+    }
+  }
+  
+  // Add a new note
+  void addNote(Note note) {
+    final dateKey = note.dateKey;
+    if (!_notesByDate.containsKey(dateKey)) {
+      _notesByDate[dateKey] = [];
+    }
+    _notesByDate[dateKey]!.add(note);
+    _saveNotes();
+    notifyListeners();
+  }
+  
+  // Update an existing note
+  void updateNote(Note updatedNote) {
+    final dateKey = updatedNote.dateKey;
+    if (_notesByDate.containsKey(dateKey)) {
+      final index = _notesByDate[dateKey]!.indexWhere((note) => note.id == updatedNote.id);
+      if (index != -1) {
+        _notesByDate[dateKey]![index] = updatedNote;
+        _saveNotes();
+        notifyListeners();
+      }
+    }
+  }
+  
+  // Delete a note
+  void deleteNote(String noteId) {
+    _notesByDate.forEach((dateKey, notes) {
+      notes.removeWhere((note) => note.id == noteId);
+    });
+    // Remove empty date entries
+    _notesByDate.removeWhere((key, value) => value.isEmpty);
+    _saveNotes();
+    notifyListeners();
+  }
+  
+  // Get notes for a specific date
+  List<Note> getNotesForDate(DateTime date) {
+    final dateKey = DateFormat('yyyy-MM-dd').format(date);
+    return _notesByDate[dateKey] ?? [];
+  }
+  
+  // Check if a verse has notes
+  bool hasNoteForVerse(DateTime date, VerseReference verseRef) {
+    final notes = getNotesForDate(date);
+    for (final note in notes) {
+      for (final verse in note.selectedVerses) {
+        if (verse.verseId == verseRef.verseId) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+  
+  // Get all notes for a specific verse
+  List<Note> getNotesForVerse(DateTime date, VerseReference verseRef) {
+    final notes = getNotesForDate(date);
+    return notes.where((note) {
+      return note.selectedVerses.any((verse) => verse.verseId == verseRef.verseId);
+    }).toList();
+  }
+  
+  // Get total notes count for a date
+  int getNotesCountForDate(DateTime date) {
+    final dateKey = DateFormat('yyyy-MM-dd').format(date);
+    return _notesByDate[dateKey]?.length ?? 0;
+  }
+
+  // ==================== Highlights Management Methods ====================
+
+  // Load highlights from SharedPreferences
+  Future<void> loadHighlights() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final highlightsJson = prefs.getString('userHighlights');
+
+      if (highlightsJson != null) {
+        final Map<String, dynamic> decoded = json.decode(highlightsJson);
+        _highlightsByVerse = decoded.map((key, value) {
+          return MapEntry(key, VerseHighlight.fromJson(value));
+        });
+      }
+    } catch (e) {
+      print('Error loading highlights: $e');
+      _highlightsByVerse = {};
+    }
+    notifyListeners();
+  }
+
+  // Save highlights to SharedPreferences
+  Future<void> _saveHighlights() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final highlightsMap = _highlightsByVerse.map((key, value) {
+        return MapEntry(key, value.toJson());
+      });
+      final highlightsJson = json.encode(highlightsMap);
+      await prefs.setString('userHighlights', highlightsJson);
+    } catch (e) {
+      print('Error saving highlights: $e');
+    }
+  }
+
+  // Add or update a highlight
+  void addHighlight(String book, int chapter, int verse, Color color) {
+    final verseId = '$book:$chapter:$verse';
+    _highlightsByVerse[verseId] = VerseHighlight.create(
+      book: book,
+      chapter: chapter,
+      verse: verse,
+      color: color,
+    );
+    _saveHighlights();
+    notifyListeners();
+  }
+
+  // Remove a highlight
+  void removeHighlight(String book, int chapter, int verse) {
+    final verseId = '$book:$chapter:$verse';
+    _highlightsByVerse.remove(verseId);
+    _saveHighlights();
+    notifyListeners();
+  }
+
+  // Get highlight for a specific verse
+  VerseHighlight? getHighlightForVerse(String book, int chapter, int verse) {
+    final verseId = '$book:$chapter:$verse';
+    return _highlightsByVerse[verseId];
+  }
+
+  // Get all highlights
+  List<VerseHighlight> getAllHighlights() {
+    return _highlightsByVerse.values.toList();
+  }
+
+  // ==================== Copy to Clipboard Methods ====================
+
+  /// Copy verses to clipboard with reference (default format)
+  Future<void> copyVersesWithReference(List<Verse> verses) async {
+    if (verses.isEmpty) return;
+
+    final buffer = StringBuffer();
+
+    // Group verses by book and chapter
+    final groupedVerses = <String, List<Verse>>{};
+    for (final verse in verses) {
+      final key = '${verse.fullName} ${verse.chapter}';
+      if (!groupedVerses.containsKey(key)) {
+        groupedVerses[key] = [];
+      }
+      groupedVerses[key]!.add(verse);
+    }
+
+    // Format output
+    groupedVerses.forEach((reference, verseList) {
+      verseList.sort((a, b) => a.verse.compareTo(b.verse));
+
+      // Add reference header
+      final verseNumbers = verseList.map((v) => v.verse).toList();
+      final verseRange = formatVerseRange(verseNumbers);
+      buffer.writeln('$reference:$verseRange');
+      buffer.writeln();
+
+      // Add verse text
+      for (final verse in verseList) {
+        buffer.writeln('${verse.verse}. ${verse.btext}');
+      }
+      buffer.writeln();
+    });
+
+    await Clipboard.setData(ClipboardData(text: buffer.toString().trim()));
+  }
+
+  /// Copy verses in compact format (no spacing, minimal formatting)
+  Future<void> copyVersesCompact(List<Verse> verses) async {
+    if (verses.isEmpty) return;
+
+    final buffer = StringBuffer();
+    verses.sort((a, b) => a.verse.compareTo(b.verse));
+
+    for (int i = 0; i < verses.length; i++) {
+      final verse = verses[i];
+      buffer.write('${verse.verse}. ${verse.btext}');
+      if (i < verses.length - 1) {
+        buffer.write(' ');
+      }
+    }
+
+    await Clipboard.setData(ClipboardData(text: buffer.toString()));
+  }
+
+  /// Copy verses in share-friendly format (formatted for social media)
+  Future<void> copyVersesShareFriendly(List<Verse> verses) async {
+    if (verses.isEmpty) return;
+
+    final buffer = StringBuffer();
+
+    // Group verses by book and chapter
+    final groupedVerses = <String, List<Verse>>{};
+    for (final verse in verses) {
+      final key = '${verse.fullName} ${verse.chapter}';
+      if (!groupedVerses.containsKey(key)) {
+        groupedVerses[key] = [];
+      }
+      groupedVerses[key]!.add(verse);
+    }
+
+    // Format output
+    groupedVerses.forEach((reference, verseList) {
+      verseList.sort((a, b) => a.verse.compareTo(b.verse));
+
+      // Add verse text first
+      for (final verse in verseList) {
+        buffer.writeln(verse.btext);
+      }
+      buffer.writeln();
+
+      // Add reference at the end
+      final verseNumbers = verseList.map((v) => v.verse).toList();
+      final verseRange = formatVerseRange(verseNumbers);
+      buffer.writeln('- $reference:$verseRange');
+    });
+
+    await Clipboard.setData(ClipboardData(text: buffer.toString().trim()));
+  }
+
 }

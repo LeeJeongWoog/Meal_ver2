@@ -17,13 +17,14 @@ if (keystorePropertiesFile.exists()) {
 android {
     namespace = "com.example.meal_ver2"
     //compileSdk = flutter.compileSdkVersion
-    compileSdkVersion 34
+    compileSdkVersion 35
     buildToolsVersion "34.0.0"
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8
+        coreLibraryDesugaringEnabled true
     }
 
     kotlinOptions {
@@ -32,9 +33,9 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId "com.echadworks.meal" // 패키지 이름은 실제 패키지 이름으로 설정
-        minSdkVersion flutter.minSdkVersion // minSdkVersion을 23으로 설정
-        targetSdkVersion 34
+        applicationId "com.echadworks.meal_ver2" // 패키지 이름은 실제 패키지 이름으로 설정
+        minSdkVersion 23 // minSdkVersion을 23으로 설정
+        targetSdkVersion 35
         versionCode 101
         versionName "2.0.0"
         multiDexEnabled true
@@ -64,6 +65,7 @@ android {
 
 dependencies {
     implementation 'androidx.multidex:multidex:2.0.1'
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
 }
 
 flutter {

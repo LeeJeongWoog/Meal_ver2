@@ -15,8 +15,7 @@ if (keystorePropertiesFile.exists()) {
 }
 
 android {
-    namespace = "com.example.meal_ver2"
-    //compileSdk = flutter.compileSdkVersion
+    namespace = "com.echadworks.meal_ver2"
     compileSdkVersion 35
     buildToolsVersion "34.0.0"
     ndkVersion = flutter.ndkVersion
@@ -71,4 +70,3 @@ dependencies {
 flutter {
     source = "../.."
 }
-apply plugin: 'com.google.gms.google-services'

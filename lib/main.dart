@@ -39,6 +39,7 @@ Future<void> main() async {
   }  catch (e, st) {
     debugPrint('Error initializing in main(): $e');
     debugPrint('$st');
+    return;
   }
   final SharedPreferences sharedPreferences =
   await SharedPreferences.getInstance();

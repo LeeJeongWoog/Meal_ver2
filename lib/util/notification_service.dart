@@ -67,7 +67,7 @@ class NotificationService {
     await _plugin.zonedSchedule(
       7001,
       '끼니 시간이에요 🍽️',
-      '오늘의 끼니를 기록해볼까요?',
+      '오늘의 끼니를 묵상해 볼까요?',
       next,
       const NotificationDetails(
         android: AndroidNotificationDetails(

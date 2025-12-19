@@ -473,6 +473,13 @@ Future<void> performInitialSetup(SharedPreferences prefs) async {
     //SharedPreferences prefs = await SharedPreferences.getInstance();
     this.SelectedDate = date;
     this.TodayPlan = getTodayPlan();
+
+    if (TodayPlan == null)
+      {
+        deleteMealPlan();
+        await _getMealPlan();
+      }
+
     lastViewedDate = date;
     _SharedPreferences.setString('lastViewedDate', this.SelectedDate.toString());
     _updateTodayPlan();
@@ -493,9 +500,10 @@ Future<void> performInitialSetup(SharedPreferences prefs) async {
   Plan? _existTodayPlan() {
     List<Plan>? mealPlan = _readSavedMealPlan();
     int? todayIndex = _getTodayIndex(mealPlan ?? []);
-    if (mealPlan != null && todayIndex != null) {
+    if (mealPlan != null && todayIndex != null && todayIndex != -1) {
       return mealPlan[todayIndex];
     }
+
     return null;
   }
 

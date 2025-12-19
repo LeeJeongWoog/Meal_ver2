@@ -14,18 +14,24 @@ import 'package:url_launcher/url_launcher.dart';
 import '../main.dart';
 import '../util/CustomTheme.dart';
 import 'OptionView.dart'; // 성경 선택 화면을 import
+import 'package:linked_scroll_controller/linked_scroll_controller.dart';
 
 class MobileMeal2View extends StatefulWidget {
   @override
   _MobileMeal2ViewState createState() => _MobileMeal2ViewState();
 }
+enum _LayoutMode { list, split }
+
 
 class _MobileMeal2ViewState extends State<MobileMeal2View> {
   bool isLoading = true;
   String errorMessage = '';
   DateTime? selectedDate;
   late MainViewModel viewModel;
-
+  bool _syncingScroll = false;
+  late final LinkedScrollControllerGroup _linkedGroup;
+  final List<ScrollController> _bibleScrollControllers = [];
+  _LayoutMode _layoutMode = _LayoutMode.list;
   // Selection mode variables
   bool isSelectionMode = false;
   Set<String> selectedVerseIds = {};
@@ -36,8 +42,9 @@ class _MobileMeal2ViewState extends State<MobileMeal2View> {
   @override
   void initState() {
     super.initState();
-    viewModel =
-        Provider.of<MainViewModel>(context, listen: false); // viewModel 가져오기
+    _linkedGroup = LinkedScrollControllerGroup();
+
+    viewModel = Provider.of<MainViewModel>(context, listen: false);
     _loadData();
   }
 
@@ -182,7 +189,196 @@ class _MobileMeal2ViewState extends State<MobileMeal2View> {
 
     _exitSelectionMode();
   }
+  
+  void _syncScrollToOthers(ScrollController source) {
+    if (_syncingScroll) return;
+    _syncingScroll = true;
+    final pos = source.hasClients ? source.position.pixels : 0.0;
+    for (final c in _bibleScrollControllers) {
+      if (c == source) continue;
+      if (!c.hasClients) continue;
+      final max = c.position.maxScrollExtent;
+      c.jumpTo(pos.clamp(0.0, max));
+    }
+    _syncingScroll = false;
+  }
 
+  Widget _buildBibleColumn({
+    required BuildContext context,
+    required MainViewModel viewModel,
+    required int bibleIndex,
+    required ScrollController controller,
+  }) {
+    final verses = viewModel.DataSource[bibleIndex];
+    final isFirstBible = bibleIndex == 0;
+    final isSecondBible = bibleIndex == 1;
+    final isThirdBible = bibleIndex == 2;
+    final isFourthBible = bibleIndex == 3;
+
+    final bibleType = (viewModel.SelectedBibles.isNotEmpty && bibleIndex < viewModel.SelectedBibles.length)
+        ? viewModel.SelectedBibles[bibleIndex]
+        : '';
+
+    return NotificationListener<ScrollNotification>(
+      onNotification: (n) {
+        if (n is ScrollUpdateNotification && n.dragDetails != null) {
+          _syncScrollToOthers(controller);
+        }
+        return false;
+      },
+      child: ListView.builder(
+        controller: controller,
+        itemCount: verses.length,
+        itemBuilder: (context, index) {
+          final verse = verses[index];
+          final verseRef = VerseReference.fromVerse(verse, bibleType);
+          final isSelected = selectedVerseIds.contains(verseRef.verseId);
+          final hasNote = viewModel.hasNoteForVerse(viewModel.SelectedDate ?? DateTime.now(), verseRef);
+
+          final highlight = viewModel.getHighlightForVerse(verse.book, verse.chapter, verse.verse);
+          final hasHighlight = highlight != null;
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onLongPress: () {
+                  if (!isSelectionMode) {
+                    _enterSelectionMode();
+                    _toggleVerseSelection(verse, bibleType);
+                  }
+                },
+                onTap: () {
+                  if (isSelectionMode) {
+                    _toggleVerseSelection(verse, bibleType);
+                  }
+                },
+                child: Container(
+                  decoration: isSelected
+                      ? BoxDecoration(
+                    color: _selectionFill(context),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: _selectionBorder(context), width: 1.1),
+                  )
+                      : null,
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final w = constraints.maxWidth;
+                      final textColor = Theme.of(context).textTheme.bodyLarge?.color;
+
+                      final verseText = viewModel.DataSource.length > 1
+                          ? '${verse.bibleType} ${verse.btext}'
+                          : verse.btext;
+
+                      final verseBodyColor = isFirstBible
+                          ? textColor
+                          : isSecondBible
+                          ? Colors.blueGrey
+                          : isThirdBible
+                          ? Colors.brown
+                          : Colors.deepPurple;
+
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Opacity(
+                            opacity: 1.0,
+                            child: Container(
+                              width: w * 0.10,
+                              padding: const EdgeInsets.only(top: 2),
+                              child: Text(
+                                '${verse.verse}',
+                                style: TextStyle(
+                                  color: textColor,
+                                  fontFamily: 'Biblefont',
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: viewModel.fontSize * 0.8,
+                                  height: viewModel.lineSpacing,
+                                ),
+                                textAlign: TextAlign.right,
+                              ),
+                            ),
+                          ),
+                          SizedBox(width: w * 0.02),
+                          Expanded(
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Container(
+                                    decoration: hasHighlight
+                                        ? BoxDecoration(
+                                      color: highlight!.color.withOpacity(0.3),
+                                      borderRadius: BorderRadius.circular(4),
+                                    )
+                                        : null,
+                                    child: Text(
+                                      verseText,
+                                      style: TextStyle(
+                                        color: verseBodyColor,
+                                        fontFamily: 'Biblefont',
+                                        fontSize: viewModel.fontSize,
+                                        height: viewModel.lineSpacing,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                if (hasNote && !isSelectionMode)
+                                  const SizedBox(width: 4),
+                                if (hasNote && !isSelectionMode)
+                                  Tooltip(
+                                    message: '노트',
+                                    child: Icon(
+                                      Icons.description,
+                                      size: 16,
+                                      color: Theme.of(context).primaryColor,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ),
+              SizedBox(height: viewModel.verseSpacing),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  void _ensureBibleControllers(int count) {
+    while (_bibleScrollControllers.length < count) {
+      _bibleScrollControllers.add(_linkedGroup.addAndGet());
+    }
+    while (_bibleScrollControllers.length > count) {
+      _bibleScrollControllers.removeLast().dispose();
+    }
+  }
+  _LayoutMode _calcLayoutMode(double width, int bibleCount) {
+    const tabletWidth = 720.0; 
+    if (width >= tabletWidth && bibleCount > 1) {
+      return _LayoutMode.split;
+    }
+    return _LayoutMode.list;
+  }
+
+  void _updateLayoutModeIfNeeded(BuildContext context, double width, int bibleCount) {
+    final desired = _calcLayoutMode(width, bibleCount);
+    if (desired == _layoutMode) return;
+
+    // build 중 setState 금지 → 프레임 끝나고 반영
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() {
+        _layoutMode = desired;
+      });
+    });
+  }
   // Build action button widget
   Widget _buildActionButton(
     BuildContext context, {
@@ -216,298 +412,377 @@ class _MobileMeal2ViewState extends State<MobileMeal2View> {
 
   @override
   void dispose() {
+    for (final c in _bibleScrollControllers) {
+      c.dispose();
+    }
     _scrollController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    print('Building Meal2View...');
-    return WillPopScope(
-      onWillPop: () async {
-        if (isSelectionMode) {
-          _exitSelectionMode();
-          return false;
-        }
-        return true;
-      },
-      child: GestureDetector(
-        onHorizontalDragEnd: (details) {
-          if (!isSelectionMode) {
-            if (details.primaryVelocity! < 0) {
-              _changeDate(context, true);
-            } else if (details.primaryVelocity! > 0) {
-              _changeDate(context, false);
-            }
-          }
-        },
-        child: ValueListenableBuilder<ThemeMode>(
-          valueListenable: MainViewModel.themeMode,
-          builder: (context, themeMode, child) {
-            return MaterialApp(
-              themeMode: themeMode,
-              theme: ThemeData.light(),
-              darkTheme: ThemeData.dark(),
-              home: Scaffold(
-                endDrawer: Drawer(
-                  child: ThemeAndBibleMenu(),
-                ),
-                body: SafeArea(
-                  child: Consumer<MainViewModel>(
-                    builder: (context, viewModel, child) {
-                      if (viewModel.IsLoading) {
-                        print('UI: Loading state...');
-                        return Center(child: CircularProgressIndicator());
-                      }
+    return LayoutBuilder(
+        builder: (context, constraints) {
+          final width = constraints.maxWidth;
 
-                      print('UI: Displaying data.');
-                      return Container(
-                        color: Theme.of(context).colorScheme.background,
-                        child: Padding(
-                          padding: const EdgeInsets.all(20.0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Header(
-                                selectedDate: selectedDate,
-                                isSelectionMode: isSelectionMode,
-                                selectedCount: selectedVerseIds.length,
-                                onExitSelectionMode: _exitSelectionMode,
-                                onSelectDate: () async {
-                                  final DateTime? pickedDate =
-                                      await showDatePicker(
-                                    context: context,
-                                    initialDate: selectedDate ?? DateTime.now(),
-                                    firstDate: DateTime(2020),
-                                    lastDate: DateTime(2030),
-                                    initialEntryMode:
-                                        DatePickerEntryMode.calendarOnly,
-                                  );
-                                  if (pickedDate != null &&
-                                      pickedDate != selectedDate) {
-                                    setState(() {
-                                      selectedDate = pickedDate;
-                                    });
-                                    viewModel.setSelectedDate(pickedDate);
-                                  }
-                                },
-                              ),
-                              //SizedBox(height: 16.0), // 헤더와 본문 사이에 간격 추가
-                              Expanded(
-                                child: RefreshIndicator(
-                                  onRefresh: _refreshData,
-                                  child: ListView.builder(
-                                    controller: _scrollController,
-                                    itemCount: viewModel.DataSource[0].length,
-                                    itemBuilder: (context, index) {
-                                      return Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          ...viewModel.DataSource.asMap()
-                                              .entries
-                                              .map((entry) {
-                                            int bibleIndex = entry.key;
-                                            List<Verse> bibleVerses =
-                                                entry.value;
+          print('Building Meal2View...');
+          return WillPopScope(
+            onWillPop: () async {
+              if (isSelectionMode) {
+                _exitSelectionMode();
+                return false;
+              }
+              return true;
+            },
+            child: GestureDetector(
+              onHorizontalDragEnd: (details) {
+                if (!isSelectionMode) {
+                  if (details.primaryVelocity! < 0) {
+                    _changeDate(context, true);
+                  } else if (details.primaryVelocity! > 0) {
+                    _changeDate(context, false);
+                  }
+                }
+              },
+              child: ValueListenableBuilder<ThemeMode>(
+                valueListenable: MainViewModel.themeMode,
+                builder: (context, themeMode, child) {
+                  return MaterialApp(
 
-                                            if (index < bibleVerses.length) {
-                                              Verse verse = bibleVerses[index];
-                                              bool isFirstBible =
-                                                  bibleIndex == 0;
-                                              bool isSecondBible =
-                                                  bibleIndex == 1;
-                                              bool isThirdBible =
-                                                  bibleIndex == 2;
-                                              bool isFourthBible =
-                                                  bibleIndex == 3;
+                    themeMode: themeMode,
+                    theme: ThemeData.light(),
+                    darkTheme: ThemeData.dark(),
+                    home: Scaffold(
+                      endDrawer: Drawer(
+                        child: ThemeAndBibleMenu(),
+                      ),
+                      body: SafeArea(
+                        child: Consumer<MainViewModel>(
+                          builder: (context, viewModel, child) {
+                            if (viewModel.IsLoading) {
+                              return Center(child: CircularProgressIndicator());
+                            }
 
-                                              final bibleType = viewModel
-                                                          .SelectedBibles
-                                                          .isNotEmpty &&
-                                                      bibleIndex <
-                                                          viewModel
-                                                              .SelectedBibles
-                                                              .length
-                                                  ? viewModel.SelectedBibles[
-                                                      bibleIndex]
-                                                  : '';
-                                              final verseRef =
-                                                  VerseReference.fromVerse(
-                                                      verse, bibleType);
-                                              final isSelected =
-                                                  selectedVerseIds.contains(
-                                                      verseRef.verseId);
-                                              final hasNote =
-                                                  viewModel.hasNoteForVerse(
-                                                      viewModel.SelectedDate ??
-                                                          DateTime.now(),
-                                                      verseRef);
-                                              final highlight = viewModel
-                                                  .getHighlightForVerse(
-                                                      verse.book,
-                                                      verse.chapter,
-                                                      verse.verse);
-                                              final hasHighlight =
-                                                  highlight != null;
+                            final bibleCount = viewModel.DataSource.length;
+                            final desired = _calcLayoutMode(width, bibleCount);
 
-                                              return GestureDetector(
-                                                behavior: HitTestBehavior.opaque,
-                                                onLongPress: () {
-                                                  if (!isSelectionMode) {
-                                                    _enterSelectionMode();
-                                                    _toggleVerseSelection(
+                            if (desired != _layoutMode) {
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                if (!mounted) return;
+                                setState(() {
+                                  _layoutMode = desired;
+                                });
+                              });
+                            }
+                            
+                            if (_layoutMode == _LayoutMode.split) {
+                              _ensureBibleControllers(bibleCount);
+                            }
+                            
+                            print('UI: Displaying data.');
+                            return Container(
+                              color: Theme
+                                  .of(context)
+                                  .colorScheme
+                                  .background,
+                              child: Padding(
+                                padding: const EdgeInsets.all(20.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: [
+                                    Header(
+                                      selectedDate: selectedDate,
+                                      isSelectionMode: isSelectionMode,
+                                      selectedCount: selectedVerseIds.length,
+                                      onExitSelectionMode: _exitSelectionMode,
+                                      onSelectDate: () async {
+                                        final DateTime? pickedDate =
+                                        await showDatePicker(
+                                          context: context,
+                                          initialDate: selectedDate ?? DateTime.now(),
+                                          firstDate: DateTime(2020),
+                                          lastDate: DateTime(2030),
+                                          initialEntryMode:
+                                          DatePickerEntryMode.calendarOnly,
+                                        );
+                                        if (pickedDate != null &&
+                                            pickedDate != selectedDate) {
+                                          setState(() {
+                                            selectedDate = pickedDate;
+                                          });
+                                          viewModel.setSelectedDate(pickedDate);
+                                        }
+                                      },
+                                    ),
+                                    //SizedBox(height: 16.0), // 헤더와 본문 사이에 간격 추가
+
+                                    Expanded(
+                                      child: RefreshIndicator(
+                                        onRefresh: _refreshData,
+                                        child: _layoutMode == _LayoutMode.split
+                                            ? (bibleCount == 4)
+                                            ? GridView.count(
+                                          crossAxisCount: 2,
+                                          childAspectRatio: 1.0,
+                                          children: List.generate(4, (i) {
+                                            return Padding(
+                                              padding: const EdgeInsets.symmetric(horizontal: 6.0),
+                                              child: _buildBibleColumn(
+                                                context: context,
+                                                viewModel: viewModel,
+                                                bibleIndex: i,
+                                                controller: _bibleScrollControllers[i],
+                                              ),
+                                            );
+                                          }),
+                                        )
+                                            : Row(
+                                          children: List.generate(bibleCount, (i) {
+                                            return Expanded(
+                                              child: Padding(
+                                                padding: EdgeInsets.only(left: i == 0 ? 0 : 8.0),
+                                                child: _buildBibleColumn(
+                                                  context: context,
+                                                  viewModel: viewModel,
+                                                  bibleIndex: i,
+                                                  controller: _bibleScrollControllers[i],
+                                                ),
+                                              ),
+                                            );
+                                          }),
+                                        )
+                                            : ListView.builder(
+                                          controller: _scrollController,
+                                          itemCount: viewModel.DataSource[0].length,
+                                          itemBuilder: (context, index) {
+                                            return Column(
+                                              crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                              children: [
+                                                ...viewModel.DataSource
+                                                    .asMap()
+                                                    .entries
+                                                    .map((entry) {
+                                                  int bibleIndex = entry.key;
+                                                  List<Verse> bibleVerses =
+                                                      entry.value;
+
+                                                  if (index < bibleVerses.length) {
+                                                    Verse verse = bibleVerses[index];
+                                                    bool isFirstBible =
+                                                        bibleIndex == 0;
+                                                    bool isSecondBible =
+                                                        bibleIndex == 1;
+                                                    bool isThirdBible =
+                                                        bibleIndex == 2;
+                                                    bool isFourthBible =
+                                                        bibleIndex == 3;
+
+                                                    final bibleType = viewModel
+                                                        .SelectedBibles
+                                                        .isNotEmpty &&
+                                                        bibleIndex <
+                                                            viewModel
+                                                                .SelectedBibles
+                                                                .length
+                                                        ? viewModel.SelectedBibles[
+                                                    bibleIndex]
+                                                        : '';
+                                                    final verseRef =
+                                                    VerseReference.fromVerse(
                                                         verse, bibleType);
-                                                  }
-                                                },
-                                                onTap: () {
-                                                  if (isSelectionMode) {
-                                                    _toggleVerseSelection(
-                                                        verse, bibleType);
-                                                  }
-                                                },
-                                                child: Container(
-                                                  decoration: isSelected
-                                                      ? BoxDecoration(
+                                                    final isSelected =
+                                                    selectedVerseIds.contains(
+                                                        verseRef.verseId);
+                                                    final hasNote =
+                                                    viewModel.hasNoteForVerse(
+                                                        viewModel.SelectedDate ??
+                                                            DateTime.now(),
+                                                        verseRef);
+                                                    final highlight = viewModel
+                                                        .getHighlightForVerse(
+                                                        verse.book,
+                                                        verse.chapter,
+                                                        verse.verse);
+                                                    final hasHighlight =
+                                                        highlight != null;
+
+                                                    return GestureDetector(
+                                                      behavior: HitTestBehavior.opaque,
+                                                      onLongPress: () {
+                                                        if (!isSelectionMode) {
+                                                          _enterSelectionMode();
+                                                          _toggleVerseSelection(
+                                                              verse, bibleType);
+                                                        }
+                                                      },
+                                                      onTap: () {
+                                                        if (isSelectionMode) {
+                                                          _toggleVerseSelection(
+                                                              verse, bibleType);
+                                                        }
+                                                      },
+                                                      child: Container(
+                                                        decoration: isSelected
+                                                            ? BoxDecoration(
                                                           color: _selectionFill(
                                                               context),
                                                           borderRadius:
-                                                              BorderRadius
-                                                                  .circular(8),
+                                                          BorderRadius
+                                                              .circular(8),
                                                           border: Border.all(
                                                             color:
-                                                                _selectionBorder(
-                                                                    context),
+                                                            _selectionBorder(
+                                                                context),
                                                             width: 1.1,
                                                           ),
                                                         )
-                                                      : null,
-                                                  child: LayoutBuilder(
-                                                    builder:
-                                                        (context, constraints) {
-                                                      final w = constraints.maxWidth;
-                                                      return Row( crossAxisAlignment: CrossAxisAlignment.start,
-                                                        children: [Opacity(opacity:isFirstBible? 1.0: 0.1,
-                                                            child: Container( width: w * 0.05,
-                                                              padding: EdgeInsets.only(top: 2),
-                                                              child: Text('${verse.verse} ',
-                                                                style: TextStyle(
-                                                                  color: Theme.of(context).textTheme.bodyLarge?.color,
-                                                                  fontFamily:'Biblefont',
-                                                                  fontWeight:FontWeight.bold,
-                                                                  fontSize:viewModel.fontSize * 0.8,
-                                                                  height: viewModel.lineSpacing,
+                                                            : null,
+                                                        child: LayoutBuilder(
+                                                          builder:
+                                                              (context, constraints) {
+                                                            final w = constraints.maxWidth;
+                                                            return Row(crossAxisAlignment: CrossAxisAlignment.start,
+                                                              children: [Opacity(opacity: isFirstBible ? 1.0 : 0.1,
+                                                                child: Container(width: w * 0.05,
+                                                                  padding: EdgeInsets.only(top: 2),
+                                                                  child: Text('${verse.verse} ',
+                                                                    style: TextStyle(
+                                                                      color: Theme
+                                                                          .of(context)
+                                                                          .textTheme
+                                                                          .bodyLarge
+                                                                          ?.color,
+                                                                      fontFamily: 'Biblefont',
+                                                                      fontWeight: FontWeight.bold,
+                                                                      fontSize: viewModel.fontSize * 0.8,
+                                                                      height: viewModel.lineSpacing,
+                                                                    ),
+                                                                    textAlign: TextAlign.right,
+                                                                  ),
                                                                 ),
-                                                                textAlign:TextAlign.right,
                                                               ),
-                                                            ),
-                                                          ),
-                                                          SizedBox(
-                                                            width: w * 0.01,
-                                                          ),
-                                                          Expanded(
-                                                            child: Row(
-                                                              children: [
+                                                                SizedBox(
+                                                                  width: w * 0.01,
+                                                                ),
                                                                 Expanded(
-                                                                  child:
-                                                                      Container(
-                                                                    decoration:
-                                                                        hasHighlight
-                                                                            ? BoxDecoration(
-                                                                                color: highlight.color.withOpacity(0.3),
-                                                                                borderRadius: BorderRadius.circular(4),
-                                                                              )
-                                                                            : null,
-                                                                    child: isSelectionMode
-                                                                        ? Text(
+                                                                  child: Row(
+                                                                    children: [
+                                                                      Expanded(
+                                                                        child:
+                                                                        Container(
+                                                                          decoration:
+                                                                          hasHighlight
+                                                                              ? BoxDecoration(
+                                                                            color: highlight.color.withOpacity(0.3),
+                                                                            borderRadius: BorderRadius.circular(4),
+                                                                          )
+                                                                              : null,
+                                                                          child: isSelectionMode
+                                                                              ? Text(
                                                                             viewModel.DataSource.length > 1 // 성경이 여러 개인 경우 확인
                                                                                 ? '${verse.bibleType} ${verse.btext}' // 여러 개일 경우 bibletype 포함
                                                                                 : '${verse.btext}',
                                                                             // 하나일 경우 bibletype 없이 btext만 표시
                                                                             style:
-                                                                                TextStyle(
+                                                                            TextStyle(
                                                                               color: isFirstBible
-                                                                                  ? Theme.of(context).textTheme.bodyLarge?.color
+                                                                                  ? Theme
+                                                                                  .of(context)
+                                                                                  .textTheme
+                                                                                  .bodyLarge
+                                                                                  ?.color
                                                                                   : isSecondBible
-                                                                                      ? Colors.blueGrey
-                                                                                      : isThirdBible
-                                                                                          ? Colors.brown
-                                                                                          : Colors.deepPurple,
+                                                                                  ? Colors.blueGrey
+                                                                                  : isThirdBible
+                                                                                  ? Colors.brown
+                                                                                  : Colors.deepPurple,
                                                                               fontWeight: FontWeight.normal,
                                                                               fontFamily: 'Biblefont',
                                                                               fontSize: viewModel.fontSize,
                                                                               height: viewModel.lineSpacing,
                                                                             ),
                                                                           )
-                                                                        : Text(
+                                                                              : Text(
                                                                             viewModel.DataSource.length > 1 // 성경이 여러 개인 경우 확인
                                                                                 ? '${verse.bibleType} ${verse.btext}' // 여러 개일 경우 bibletype 포함
                                                                                 : '${verse.btext}',
                                                                             // 하나일 경우 bibletype 없이 btext만 표시
                                                                             style:
-                                                                                TextStyle(
+                                                                            TextStyle(
                                                                               color: isFirstBible
-                                                                                  ? Theme.of(context).textTheme.bodyLarge?.color
+                                                                                  ? Theme
+                                                                                  .of(context)
+                                                                                  .textTheme
+                                                                                  .bodyLarge
+                                                                                  ?.color
                                                                                   : isSecondBible
-                                                                                      ? Colors.blueGrey
-                                                                                      : isThirdBible
-                                                                                          ? Colors.brown
-                                                                                          : Colors.deepPurple,
+                                                                                  ? Colors.blueGrey
+                                                                                  : isThirdBible
+                                                                                  ? Colors.brown
+                                                                                  : Colors.deepPurple,
                                                                               fontWeight: FontWeight.normal,
                                                                               fontFamily: 'Biblefont',
                                                                               fontSize: viewModel.fontSize,
                                                                               height: viewModel.lineSpacing,
                                                                             ),
                                                                           ),
+                                                                        ),
+                                                                      ),
+                                                                      if (hasNote &&
+                                                                          !isSelectionMode)
+                                                                        Padding(padding: EdgeInsets.only(left: 4),
+                                                                          child: Tooltip(message: '노트',
+                                                                            child: Icon(Icons.description,
+                                                                              size: 16,
+                                                                              color: Theme
+                                                                                  .of(context)
+                                                                                  .primaryColor,
+                                                                            ),
+                                                                          ),
+                                                                        ),
+                                                                    ],
                                                                   ),
                                                                 ),
-                                                                if (hasNote &&
-                                                                    !isSelectionMode)
-                                                                  Padding(padding: EdgeInsets.only(left:4),
-                                                                    child:Tooltip(message:'노트',
-                                                                      child:Icon(Icons.description,
-                                                                        size:16,
-                                                                        color: Theme.of(context).primaryColor,
-                                                                      ),
-                                                                    ),
-                                                                  ),
                                                               ],
-                                                            ),
-                                                          ),
-                                                        ],
-                                                      );
-                                                    },
-                                                  ),
-                                                ),
-                                              );
-                                            } else {
-                                              return SizedBox.shrink();
-                                            }
-                                          }).toList(),
-                                          // 절간 간격 추가
-                                          SizedBox(
-                                              height: viewModel.verseSpacing),
-                                        ],
-                                      );
-                                    },
-                                  ),
+                                                            );
+                                                          },
+                                                        ),
+                                                      ),
+                                                    );
+                                                  } else {
+                                                    return SizedBox.shrink();
+                                                  }
+                                                }).toList(),
+                                                // 절간 간격 추가
+                                                SizedBox(
+                                                    height: viewModel.verseSpacing),
+                                              ],
+                                            );
+                                            return const SizedBox.shrink();
+                                          },
+
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                            ],
-                          ),
+                            );
+                          },
                         ),
-                      );
-                    },
-                  ),
-                ),
-                bottomNavigationBar: isSelectionMode &&
-                        selectedVerseIds.isNotEmpty
-                    ? Builder(
+                      ),
+                      bottomNavigationBar: isSelectionMode &&
+                          selectedVerseIds.isNotEmpty
+                          ? Builder(
                         builder: (innerContext) {
                           return Container(
                             padding: EdgeInsets.all(8.0),
                             decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.surface,
+                              color: Theme
+                                  .of(context)
+                                  .colorScheme
+                                  .surface,
                               boxShadow: [
                                 BoxShadow(
                                   color: Colors.black12,
@@ -519,14 +794,15 @@ class _MobileMeal2ViewState extends State<MobileMeal2View> {
                             child: SafeArea(
                               child: Row(
                                 mainAxisAlignment:
-                                    MainAxisAlignment.spaceEvenly,
+                                MainAxisAlignment.spaceEvenly,
                                 children: [
                                   _buildActionButton(
                                     context,
                                     icon: Icons.copy,
                                     label: '복사',
-                                    onPressed: () => _copyWithFormat(
-                                        innerContext, 'reference'),
+                                    onPressed: () =>
+                                        _copyWithFormat(
+                                            innerContext, 'reference'),
                                   ),
                                   _buildActionButton(
                                     context,
@@ -547,12 +823,14 @@ class _MobileMeal2ViewState extends State<MobileMeal2View> {
                           );
                         },
                       )
-                    : null,
+                          : null,
+                    ),
+                  );
+                },
               ),
-            );
-          },
-        ),
-      ),
+            ),
+          );
+        },
     );
   }
 }

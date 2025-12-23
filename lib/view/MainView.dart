@@ -189,6 +189,9 @@ class _Meal2ViewState extends State<Meal2View> {
     required String label,
     required VoidCallback onPressed,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final buttonColor = isDark ? Colors.white : Theme.of(context).primaryColor;
+
     return Expanded(
       child: InkWell(
         onTap: onPressed,
@@ -197,13 +200,13 @@ class _Meal2ViewState extends State<Meal2View> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, color: Theme.of(context).primaryColor),
+              Icon(icon, color: buttonColor),
               SizedBox(height: 4),
               Text(
                 label,
                 style: TextStyle(
                   fontSize: 12,
-                  color: Theme.of(context).primaryColor,
+                  color: buttonColor,
                 ),
               ),
             ],
@@ -245,8 +248,8 @@ class _Meal2ViewState extends State<Meal2View> {
         builder: (context, themeMode, child) {
           return MaterialApp(
             themeMode: themeMode,
-            theme: ThemeData.light(),
-            darkTheme: ThemeData.dark(),
+            theme: CustomThemeData.light,
+            darkTheme: CustomThemeData.dark,
             home: Scaffold(
               endDrawer: Drawer(
                 child: ThemeAndBibleMenu(),

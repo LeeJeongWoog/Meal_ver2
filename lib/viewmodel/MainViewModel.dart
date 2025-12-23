@@ -841,7 +841,6 @@ Future<void> performInitialSetup(SharedPreferences prefs) async {
       final verseNumbers = verseList.map((v) => v.verse).toList();
       final verseRange = formatVerseRange(verseNumbers);
       buffer.writeln('$reference:$verseRange');
-      buffer.writeln();
 
       // Add verse text
       for (final verse in verseList) {

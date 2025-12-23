@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:meal_ver2/model/Note.dart';
 import 'package:meal_ver2/viewmodel/MainViewModel.dart';
+import 'package:meal_ver2/util/CustomTheme.dart';
 
 class NoteEditorView extends StatefulWidget {
   final List<VerseReference> selectedVerses;
@@ -79,17 +80,26 @@ class _NoteEditorViewState extends State<NoteEditorView> {
   Widget build(BuildContext context) {
     final dateStr = DateFormat('yyyy년 MM월 dd일', 'ko_KR').format(widget.date);
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final scaffoldBgColor = isDark
+        ? CustomThemeData.dark.scaffoldBackgroundColor
+        : CustomThemeData.light.scaffoldBackgroundColor;
+    final appBarBgColor = isDark
+        ? CustomThemeData.dark.appBarTheme.backgroundColor
+        : CustomThemeData.light.appBarTheme.backgroundColor;
 
     return Scaffold(
-      backgroundColor: isDark ? Colors.black : null,
+      backgroundColor: scaffoldBgColor,
       appBar: AppBar(
-        backgroundColor: isDark ? Colors.grey[900] : null,
+        backgroundColor: appBarBgColor,
         title: Text(
           widget.existingNote != null ? '노트 수정' : '새 노트',
           style: TextStyle(
             fontFamily: 'Settingfont',
-            color: isDark ? Colors.white : null,
+            color: isDark ? Colors.white : Colors.black,
           ),
+        ),
+        iconTheme: IconThemeData(
+          color: isDark ? Colors.white : Colors.black,
         ),
         actions: [
           TextButton(
@@ -99,9 +109,7 @@ class _NoteEditorViewState extends State<NoteEditorView> {
               style: TextStyle(
                 fontFamily: 'Settingfont',
                 fontSize: 16,
-                color: Theme.of(context).brightness == Brightness.light
-                    ? Colors.black
-                    : Colors.white,
+                color: isDark ? Colors.white : Colors.black,
               ),
             ),
           ),
@@ -117,7 +125,7 @@ class _NoteEditorViewState extends State<NoteEditorView> {
               padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 color: isDark
-                    ? Colors.grey[800]
+                    ? Color.fromRGBO(61, 51, 51, 1)
                     : Theme.of(context).primaryColor.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
@@ -149,7 +157,7 @@ class _NoteEditorViewState extends State<NoteEditorView> {
               decoration: BoxDecoration(
                 border: Border.all(
                   color: isDark
-                      ? Colors.grey[700]!
+                      ? Color.fromRGBO(80, 70, 70, 1)
                       : Colors.grey.withOpacity(0.3),
                 ),
                 borderRadius: BorderRadius.circular(8),

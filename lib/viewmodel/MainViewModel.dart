@@ -14,6 +14,7 @@ import '../model/Highlight.dart';
 import '../util/Globals.dart';
 import '../network/plan.dart';
 import '../model/Verse.dart';
+import '../util/notification_service.dart';
 import '../util/verse_range_formatter.dart';
 
 class MainViewModel extends ChangeNotifier {
@@ -39,7 +40,7 @@ class MainViewModel extends ChangeNotifier {
   Bible? _commonTransBible;
   Bible? _nasbBible;
   String bibleType = '';
-  
+  bool isDailyBibleAlarmEnabled = false;
   // Notes management
   Map<String, List<Note>> _notesByDate = {}; // Key: "yyyy-MM-dd"
 
@@ -98,67 +99,75 @@ class MainViewModel extends ChangeNotifier {
     await loadNotes();
     await loadHighlights();
     await selectLoad();
+    await loadDailyBibleAlarm();
     notifyListeners();
   }
 
   void updateFontSize(double size) async{
     _fontSize = size;
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble('fontSize', _fontSize);
+    //SharedPreferences prefs = await SharedPreferences.getInstance();
+    await _SharedPreferences.setDouble('fontSize', _fontSize);
     notifyListeners();
   }
 
   void updateVerseSpacing(double spacing) async{
     _verseSpacing = spacing;
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble('verseSpacing', _verseSpacing); // setDouble 사용
+    //SharedPreferences prefs = await SharedPreferences.getInstance();
+    await _SharedPreferences.setDouble('verseSpacing', _verseSpacing); // setDouble 사용
     notifyListeners();
   }
 
   void updateLineSpacing(double spacing) async{
     _lineSpacing = spacing;
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble('lineSpacing', _lineSpacing);
+    //SharedPreferences prefs = await SharedPreferences.getInstance();
+    await _SharedPreferences.setDouble('lineSpacing', _lineSpacing);
     notifyListeners();
   }
 
   Future<void> loadSliderSettings() async{
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    _fontSize = prefs.getDouble('fontSize') ?? 16.0; // 기본값 16.0
-    _verseSpacing = prefs.getDouble('verseSpacing') ?? 16.0; // 기본값 16.0
-    _lineSpacing = prefs.getDouble('lineSpacing') ?? 1.8; //
+    //SharedPreferences prefs = await SharedPreferences.getInstance();
+    _fontSize = _SharedPreferences.getDouble('fontSize') ?? 16.0; // 기본값 16.0
+    _verseSpacing = _SharedPreferences.getDouble('verseSpacing') ?? 16.0; // 기본값 16.0
+    _lineSpacing = _SharedPreferences.getDouble('lineSpacing') ?? 1.8; //
+    notifyListeners();
+  }
+  Future<void> loadDailyBibleAlarm() async {
+    isDailyBibleAlarmEnabled = _SharedPreferences.getBool('dailyBibleAlarm') ?? false;
+    if (isDailyBibleAlarmEnabled) {
+      await NotificationService.scheduleDaily10amBible();
+    }
     notifyListeners();
   }
 
-
   // 선택한 바이블을 SharedPreferences에 저장
   Future<void> saveSelectedBibles() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList('selectedBibles', SelectedBibles);
+    //SharedPreferences prefs = await SharedPreferences.getInstance();
+    await _SharedPreferences.setStringList('selectedBibles', SelectedBibles);
   }
 
   // SharedPreferences에서 선택한 바이블 불러오기
   Future<void> _loadSelectedBibles() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
+    //SharedPreferences prefs = await SharedPreferences.getInstance();
 
     // 첫 실행 여부 확인
-    bool isFirstRun = prefs.getBool('isFirstRun') ?? true;
-    await Prefinitial(isFirstRun, prefs);
+    bool isFirstRun = _SharedPreferences.getBool('isFirstRun') ?? true;
+    await Prefinitial(isFirstRun, _SharedPreferences);
 
     // 테마 모드 불러오기
-    String? savedTheme = prefs.getString('themeMode');
+    String? savedTheme = _SharedPreferences.getString('themeMode');
     if (savedTheme != null) {
       _themeMode.value = savedTheme == 'dark' ? ThemeMode.dark : ThemeMode.light;
     }
 
     // 마지막 본 날짜 불러오기
-    String? savedDate = prefs.getString('lastViewedDate');
+    String? savedDate = _SharedPreferences.getString('lastViewedDate');
     if (savedDate != null) {
       lastViewedDate = DateTime.tryParse(savedDate);
     }
 
+
     // 선택된 성경 불러오기
-    this.SelectedBibles = prefs.getStringList('selectedBibles') ?? [];
+    this.SelectedBibles = _SharedPreferences.getStringList('selectedBibles') ?? [];
     if (SelectedBibles.isEmpty) {
       // 기본값으로 "개역개정" 추가
       SelectedBibles.add("개역개정");
@@ -186,6 +195,7 @@ Future<void> performInitialSetup(SharedPreferences prefs) async {
   await prefs.setString('themeMode', 'light'); // 기본 테마 설정
   await prefs.setDouble('fontSize', 16.0); // 기본 글꼴 크기
   await prefs.setDouble('verseSpacing', 16.0); // 기본 줄 간격
+  await prefs.setBool('dailyBibleAlarm', true);
 
   // Skip caching Bible data on web platform (storage quota too small)
   // Web will load Bible data from assets each time instead
@@ -206,7 +216,7 @@ Future<void> performInitialSetup(SharedPreferences prefs) async {
       this._IsLoading = true;
 
       await loadAllbible();
-      _SharedPreferences = await SharedPreferences.getInstance();
+      //_SharedPreferences = await SharedPreferences.getInstance();
 
 
       if (!this._IsBibleLoaded) {
@@ -403,32 +413,32 @@ Future<void> performInitialSetup(SharedPreferences prefs) async {
     }
 
     // On mobile platforms, use cached data from SharedPreferences
-    SharedPreferences prefs = await SharedPreferences.getInstance();
+    //SharedPreferences prefs = await SharedPreferences.getInstance();
 
     switch (bibleFile) {
       case "개역개정":
-        String? revisedJson = prefs.getString('newRevisedBible');
+        String? revisedJson = _SharedPreferences.getString('newRevisedBible');
         if (revisedJson == null) {
           print('Cache miss for 개역개정, loading from asset');
           return await _loadBibleFile('bib_json/개역개정.json');
         }
         return Bible.fromJson(jsonDecode(revisedJson));
       case "새번역":
-        String? standardJson  = prefs.getString('newStandardBible');
+        String? standardJson  = _SharedPreferences.getString('newStandardBible');
         if (standardJson == null) {
           print('Cache miss for 새번역, loading from asset');
           return await _loadBibleFile('bib_json/새번역.json');
         }
         return Bible.fromJson(jsonDecode(standardJson));
       case "공동번역":
-        String? commonTransJson   = prefs.getString('commonTransBible');
+        String? commonTransJson   = _SharedPreferences.getString('commonTransBible');
         if (commonTransJson == null) {
           print('Cache miss for 공동번역, loading from asset');
           return await _loadBibleFile('bib_json/공동번역.json');
         }
         return Bible.fromJson(jsonDecode(commonTransJson));
       case "NASB":
-        String? nasbJson   = prefs.getString('nasbBible');
+        String? nasbJson   = _SharedPreferences.getString('nasbBible');
         if (nasbJson == null) {
           print('Cache miss for NASB, loading from asset');
           return await _loadBibleFile('bib_json/NASB.json');
@@ -460,11 +470,18 @@ Future<void> performInitialSetup(SharedPreferences prefs) async {
   }
 
   void setSelectedDate(DateTime? date) async{
-    SharedPreferences prefs = await SharedPreferences.getInstance();
+    //SharedPreferences prefs = await SharedPreferences.getInstance();
     this.SelectedDate = date;
     this.TodayPlan = getTodayPlan();
+
+    if (TodayPlan == null)
+      {
+        deleteMealPlan();
+        await _getMealPlan();
+      }
+
     lastViewedDate = date;
-    prefs.setString('lastViewedDate', this.SelectedDate.toString());
+    _SharedPreferences.setString('lastViewedDate', this.SelectedDate.toString());
     _updateTodayPlan();
     _addDataSource();
     loadMultipleBibles(this.SelectedBibles); // 선택된 성경으로 데이터를 다시 로드
@@ -483,9 +500,10 @@ Future<void> performInitialSetup(SharedPreferences prefs) async {
   Plan? _existTodayPlan() {
     List<Plan>? mealPlan = _readSavedMealPlan();
     int? todayIndex = _getTodayIndex(mealPlan ?? []);
-    if (mealPlan != null && todayIndex != null) {
+    if (mealPlan != null && todayIndex != null && todayIndex != -1) {
       return mealPlan[todayIndex];
     }
+
     return null;
   }
 
@@ -643,14 +661,28 @@ Future<void> performInitialSetup(SharedPreferences prefs) async {
     return planList.indexWhere((plan) =>
         DateTime.parse(plan.day!).difference(selectedOrToday).inDays == 0);
   }
-  
+
+
+
+  Future<void> setDailyBibleAlarm(bool enabled) async {
+    isDailyBibleAlarmEnabled = enabled;
+    await _SharedPreferences.setBool('dailyBibleAlarm', enabled);
+
+    if (enabled) {
+      await NotificationService.scheduleDaily10amBible();
+    } else {
+      await NotificationService.cancelDaily10amBible();
+    }
+
+    notifyListeners();
+  }
   // ==================== Notes Management Methods ====================
   
   // Load notes from SharedPreferences
   Future<void> loadNotes() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final notesJson = prefs.getString('userNotes');
+      //final prefs = await SharedPreferences.getInstance();
+      final notesJson = _SharedPreferences.getString('userNotes');
       
       if (notesJson != null) {
         final Map<String, dynamic> decoded = json.decode(notesJson);
@@ -669,12 +701,12 @@ Future<void> performInitialSetup(SharedPreferences prefs) async {
   // Save notes to SharedPreferences
   Future<void> _saveNotes() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      //final prefs = await SharedPreferences.getInstance();
       final notesMap = _notesByDate.map((key, value) {
         return MapEntry(key, value.map((note) => note.toJson()).toList());
       });
       final notesJson = json.encode(notesMap);
-      await prefs.setString('userNotes', notesJson);
+      await _SharedPreferences.setString('userNotes', notesJson);
     } catch (e) {
       print('Error saving notes: $e');
     }
@@ -753,8 +785,8 @@ Future<void> performInitialSetup(SharedPreferences prefs) async {
   // Load highlights from SharedPreferences
   Future<void> loadHighlights() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final highlightsJson = prefs.getString('userHighlights');
+      //final prefs = await SharedPreferences.getInstance();
+      final highlightsJson = _SharedPreferences.getString('userHighlights');
 
       if (highlightsJson != null) {
         final Map<String, dynamic> decoded = json.decode(highlightsJson);
@@ -772,12 +804,12 @@ Future<void> performInitialSetup(SharedPreferences prefs) async {
   // Save highlights to SharedPreferences
   Future<void> _saveHighlights() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      //final prefs = await SharedPreferences.getInstance();
       final highlightsMap = _highlightsByVerse.map((key, value) {
         return MapEntry(key, value.toJson());
       });
       final highlightsJson = json.encode(highlightsMap);
-      await prefs.setString('userHighlights', highlightsJson);
+      await _SharedPreferences.setString('userHighlights', highlightsJson);
     } catch (e) {
       print('Error saving highlights: $e');
     }

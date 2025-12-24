@@ -6,7 +6,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
 import 'package:meal_ver2/model/Verse.dart';
 import 'package:meal_ver2/network/plan.dart';
-import 'package:meal_ver2/view/MainView.dart';
+import 'package:meal_ver2/view/MobileMeal2View.dart';
 import 'package:meal_ver2/viewmodel/MainViewModel.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -58,7 +58,7 @@ void main() {
     await tester.pumpWidget(
       ChangeNotifierProvider<MainViewModel>.value(
         value: viewModel,
-        child: Meal2View(),
+        child: MobileMeal2View(),
       ),
     );
 

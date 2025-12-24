@@ -52,7 +52,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyCundSBn3Wnx2zvXOfF-Wg0hOOlifrXSPY',
-    appId: '1:380708037345:android:3bcddeeb23b9364b5e4da0',
+    appId: '1:380708037345:android:037ebaa918f7ae7a5e4da0',
     messagingSenderId: '380708037345',
     projectId: 'meal-ver2',
     storageBucket: 'meal-ver2.appspot.com',
@@ -60,11 +60,11 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyBhbWmBsNkcq0jOov8no3C4BP2R3NCx1Y8',
-    appId: '1:380708037345:ios:43b3a8d5525df2355e4da0',
+    appId: '1:380708037345:ios:900488d7c88185ac5e4da0',
     messagingSenderId: '380708037345',
     projectId: 'meal-ver2',
     storageBucket: 'meal-ver2.appspot.com',
-    iosBundleId: 'com.example.mealVer2',
+    iosBundleId: 'com.echadworks.meal',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(

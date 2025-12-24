@@ -1,7 +1,10 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'dart:io'; // 파일 업로드를 위해 필요
 import 'dart:convert'; // UTF8 디코딩을 위해 필요
 import 'package:firebase_auth/firebase_auth.dart';
+
+import '../firebase_options.dart';
 
 class FireBaseFunction{
   static Future<void> signInAnonymously() async {
@@ -10,6 +13,14 @@ class FireBaseFunction{
       print("Signed in with temporary account.");
     } catch (e) {
       print("Failed to sign in anonymously: $e");
+    }
+  }
+
+  static Future<void> _ensureFirebaseInitialized() async {
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
     }
   }
 
@@ -32,7 +43,7 @@ class FireBaseFunction{
     try {
       // Firebase Storage에서 파일 URL 가져오기
       String downloadURL = await FirebaseStorage.instance
-          .ref('db.json') // 업로드된 파일 경로
+          .ref('db_fallback.json') // 업로드된 파일 경로
           .getDownloadURL();
 
       print('Download URL: $downloadURL');
@@ -50,7 +61,7 @@ class FireBaseFunction{
     try {
       // getData()는 모바일에서만 작동하므로, URL을 통해 다운로드하는 방식 사용
       // 하지만 http 패키지 대신 dio나 다른 방법 시도
-      final ref = FirebaseStorage.instance.ref('db.json');
+      final ref = FirebaseStorage.instance.ref('db_fallback.json');
 
       // 먼저 getData() 시도 (모바일)
       try {
@@ -77,4 +88,5 @@ class FireBaseFunction{
       rethrow;
     }
   }
+
 }

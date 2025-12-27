@@ -813,7 +813,7 @@ class _MobileMeal2ViewState extends State<MobileMeal2View> {
                                   ),
                                   _buildActionButton(
                                     context,
-                                    icon: Icons.note_add,
+                                    icon: Icons.edit_note,
                                     label: '노트',
                                     onPressed: _createNoteFromSelection,
                                   ),

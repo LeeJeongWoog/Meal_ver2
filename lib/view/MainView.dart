@@ -468,7 +468,7 @@ class _Meal2ViewState extends State<Meal2View> {
                             ),
                             _buildActionButton(
                               context,
-                              icon: Icons.note_add,
+                              icon: Icons.edit_note,
                               label: '노트',
                               onPressed: _createNoteFromSelection,
                             ),

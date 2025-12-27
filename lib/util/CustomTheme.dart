@@ -25,6 +25,11 @@ class CustomThemeData{
     ),
   );
   static final ThemeData dark = ThemeData(
+    brightness: Brightness.dark,
+    colorScheme: ColorScheme.dark(
+      surface: Color.fromRGBO(41, 31, 31, 1),
+      primary: Colors.deepOrange,
+    ),
     textTheme: darkTextTheme,
     scaffoldBackgroundColor: const Color.fromRGBO(41, 31, 31, 1),
     appBarTheme: AppBarTheme(
